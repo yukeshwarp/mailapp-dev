@@ -173,10 +173,71 @@ if prompt := st.chat_input("Ask a question about your emails"):
     
     mails = st.session_state.get("mails", [])
     if mails:
-        response = query_responder(prompt, mails)
+        # response = query_responder(prompt, mails)
+        if not mails:
+            return "No emails available. Please fetch emails first."
+    
+        h = html2text.HTML2Text()
+        h.ignore_links = True
+    
+        # Extract topics
+        topics = extract_topics(mails)
+        
+        # Prepare relevant email list
+        relevant_mails = []
+        for mail in mails:
+            subject = mail.get("subject", "No Subject")
+            body = mail.get("body", {}).get("content", "No Content")
+            body_text = h.handle(body) if mail.get("body", {}).get("contentType") == "html" else body
+    
+            # Match if any topic appears in subject or body
+            if not topics or any(topic in subject or topic in body_text for topic in topics):
+                relevant_mails.append(mail)
+    
+        # If no relevant emails are found, include the most recent 5 emails as fallback
+        if not relevant_mails:
+            relevant_mails = mails[:25]
+    
+        # Prepare email content for LLM
+        mail_details = "\n".join([
+            f"Subject: {mail.get('subject', 'No Subject')}\n"
+            f"From: {mail.get('from', {}).get('emailAddress', {}).get('address', 'Unknown Sender')}\n"
+            f"Received: {mail.get('receivedDateTime', 'Unknown Time')}\n"
+            f"Importance: {mail.get('importance', 'Normal')}\n"
+            f"Has Attachment: {mail.get('hasAttachments', False)}\n"
+            f"Categories: {', '.join(mail.get('categories', [])) if mail.get('categories') else 'None'}\n"
+            f"Conversation ID: {mail.get('conversationId', 'N/A')}\n"
+            f"Weblink: {mail.get('webLink', 'No Link')}\n"
+            f"Body: {h.handle(mail['body']['content']) if mail.get('body', {}).get('contentType') == 'html' else mail.get('body', {}).get('content', 'No Content')}"
+            for mail in relevant_mails
+        ])
+    
+        # Generate LLM prompt
+        with st.spinner("Thinking..."):
+            prompt = f"Answer the user's query using these emails:\n\n" + mail_details + f"\n\nUser's Query: {query}"
+        
+            # Call LLM
+            bot_response = client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {"role": "system", "content": "You are a helpful assistant."},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.5,
+                stream = True,
+            )
+        bot_response = ""
+        with st.chat_message("assistant"):
+            response_placeholder = st.empty()
+            for chunk in response_stream:
+                if chunk.choices:
+                    bot_response += chunk.choices[0].delta.content or ""
+                    response_placeholder.markdown(bot_response)
+
+
     else:
         response = "No emails available. Fetch emails first."
     
-    st.session_state["messages"].append({"role": "assistant", "content": response})
-    with st.chat_message("assistant"):
-        st.markdown(response)
+    st.session_state["messages"].append({"role": "assistant", "content": bot_response})
+    # with st.chat_message("assistant"):
+    #     st.markdown(response)
