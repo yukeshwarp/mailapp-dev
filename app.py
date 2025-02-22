@@ -80,7 +80,7 @@ def query_responder(query, mails):
     
     mail_details = "\n".join([
         f"Subject: {mail.get('subject', 'No Subject')}\nBody: {mail.get('body', {}).get('content', '')}"
-        for mail in relevant_mails[:10]
+        for mail in relevant_mails
     ])
     
     prompt = f"Answer the user's query using these emails:\n{mail_details}\n\nUser's Query: {query}"
