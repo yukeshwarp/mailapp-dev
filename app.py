@@ -87,7 +87,7 @@ def query_responder(query, mails):
         f"From: {mail.get('from', {}).get('emailAddress', {}).get('address', 'Unknown Sender')}\n"
         f"Received: {mail.get('receivedDateTime', 'Unknown Time')}\n"
         f"Body: {h.handle(mail['body']['content']) if mail.get('body', {}).get('contentType') == 'html' else mail.get('body', {}).get('content', 'No Content')}"
-        for mail in mails if any(topic in mail.get('subject', '') or topic in mail.get('body', {}).get('content', '') for topic in topics)
+        for mail in mails 
     ])
     
     prompt = f"Answer the user's query using these emails:\n{mail_details}\n\nUser's Query: {query}"
