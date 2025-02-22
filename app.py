@@ -72,6 +72,10 @@ def extract_topics(mails, max_topics=5, max_top_words=10):
 
 def query_responder(query, mails):
     """Use LLM to respond to user query based on filtered emails."""
+    h = html2text.HTML2Text()  
+    h.ignore_links = True  
+    mails_s = mails[:30]  # Limit to 30 emails to avoid long context
+
     mail_details = "\n".join([
         f"Subject: {mail.get('subject', 'No Subject')}\n"
         f"From: {mail.get('from', {}).get('emailAddress', {}).get('address', 'Unknown Sender')}\n"
@@ -82,7 +86,7 @@ def query_responder(query, mails):
         f"Conversation ID: {mail.get('conversationId', 'N/A')}\n"
         f"Weblink: {mail.get('webLink', 'No Link')}\n"
         f"Body: {h.handle(mail['body']['content']) if mail.get('body', {}).get('contentType') == 'html' else mail.get('body', {}).get('content', 'No Content')}"
-        for mail in mails
+        for mail in mails_s
     ])
     topics = extract_topics(mails)
     relevant_mails = [mail for mail in mails if any(topic in mail_details for topic in topics)]
