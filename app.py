@@ -21,6 +21,18 @@ client = AzureOpenAI(
     api_version="2024-10-01-preview",
 )
 
+def get_access_token():  
+    """Authenticate and get access token."""
+    app = msal.ConfidentialClientApplication(
+        CLIENT_ID, authority=AUTHORITY, client_credential=CLIENT_SECRET
+    )
+    result = app.acquire_token_for_client(scopes=SCOPE)
+    if "access_token" in result:
+        return result["access_token"]
+    else:
+        st.error(f"Error acquiring token: {result.get('error_description')}")
+        return None
+
 @st.cache_data(show_spinner=True)
 def fetch_emails(access_token, user_email):
     """Fetch all emails from Outlook with metadata."""
@@ -96,7 +108,7 @@ st.sidebar.title("Email Input")
 user_email = st.sidebar.text_input("Enter User Email")
 
 if st.sidebar.button("Fetch Emails"):
-    token = os.getenv("ACCESS_TOKEN")  # Replace with your authentication function
+    token = get_access_token()  # Replace with your authentication function
     if token and user_email:
         mails = fetch_emails(token, user_email)
         st.session_state["mails"] = mails
