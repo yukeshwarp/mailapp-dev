@@ -1,0 +1,8 @@
+streamlit
+msal
+requests
+openai
+html2text
+scikit-learn
+numpy
+scipy
