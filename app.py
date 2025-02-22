@@ -214,14 +214,14 @@ if prompt := st.chat_input("Ask a question about your emails"):
     
         # Generate LLM prompt
         with st.spinner("Thinking..."):
-            prompt = f"Answer the user's query using these emails:\n\n" + mail_details + f"\n\nUser's Query: {query}"
+            prompt_template = f"Answer the user's query using these emails:\n\n" + mail_details + f"\n\nUser's Query: {prompt}"
         
             # Call LLM
             bot_response = client.chat.completions.create(
                 model="gpt-4o",
                 messages=[
                     {"role": "system", "content": "You are a helpful assistant."},
-                    {"role": "user", "content": prompt},
+                    {"role": "user", "content": prompt_template},
                 ],
                 temperature=0.5,
                 stream = True,
