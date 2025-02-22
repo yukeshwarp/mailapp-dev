@@ -86,8 +86,13 @@ def query_responder(query, mails):
         f"Subject: {mail.get('subject', 'No Subject')}\n"
         f"From: {mail.get('from', {}).get('emailAddress', {}).get('address', 'Unknown Sender')}\n"
         f"Received: {mail.get('receivedDateTime', 'Unknown Time')}\n"
+        f"Importance: {mail.get('importance', 'Normal')}\n"
+        f"Has Attachment: {mail.get('hasAttachments', False)}\n"
+        f"Categories: {', '.join(mail.get('categories', [])) if mail.get('categories') else 'None'}\n"
+        f"Conversation ID: {mail.get('conversationId', 'N/A')}\n"
+        f"Weblink: {mail.get('webLink', 'No Link')}\n"
         f"Body: {h.handle(mail['body']['content']) if mail.get('body', {}).get('contentType') == 'html' else mail.get('body', {}).get('content', 'No Content')}"
-        for mail in mails 
+        for mail in mails
     ])
     
     prompt = f"Answer the user's query using these emails:\n{mail_details}\n\nUser's Query: {query}"
