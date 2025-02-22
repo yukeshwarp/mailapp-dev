@@ -113,7 +113,7 @@ def query_responder(query, mails):
 
     # If no relevant emails are found, include the most recent 5 emails as fallback
     if not relevant_mails:
-        relevant_mails = mails[:5]
+        relevant_mails = mails[:25]
 
     # Prepare email content for LLM
     mail_details = "\n".join([
