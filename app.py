@@ -186,12 +186,23 @@ if prompt := st.chat_input("Ask a question about your emails"):
         # Prepare relevant email list
         relevant_mails = []
         for mail in mails:
+            detail = (
+                f"Subject: {mail.get('subject', 'No Subject')}\n"
+                f"From: {mail.get('from', {}).get('emailAddress', {}).get('address', 'Unknown Sender')}\n"
+                f"Received: {mail.get('receivedDateTime', 'Unknown Time')}\n"
+                f"Importance: {mail.get('importance', 'Normal')}\n"
+                f"Has Attachment: {mail.get('hasAttachments', False)}\n"
+                f"Categories: {', '.join(mail.get('categories', [])) if mail.get('categories') else 'None'}\n"
+                f"Conversation ID: {mail.get('conversationId', 'N/A')}\n"
+                f"Weblink: {mail.get('webLink', 'No Link')}\n"
+                f"Body: {h.handle(mail['body']['content']) if mail.get('body', {}).get('contentType') == 'html' else mail.get('body', {}).get('content', 'No Content')}"
+            )
             subject = mail.get("subject", "No Subject")
             body = mail.get("body", {}).get("content", "No Content")
             body_text = h.handle(body) if mail.get("body", {}).get("contentType") == "html" else body
     
             # Match if any topic appears in subject or body
-            if not topics or any(topic in subject or topic in body_text for topic in topics):
+            if not topics or any(topic in detail for topic in topics):
                 relevant_mails.append(mail)
     
         # If no relevant emails are found, include the most recent 5 emails as fallback
