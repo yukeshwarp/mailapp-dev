@@ -35,16 +35,22 @@ def get_access_token():
         return None
 
 def fetch_emails(access_token, user_email):
-    """Fetch emails from Outlook with metadata."""
-    url = f"https://graph.microsoft.com/v1.0/users/{user_email}/messages?$select=subject,from,body,receivedDateTime"
+    """Fetch all emails from Outlook with metadata."""
+    url = f"https://graph.microsoft.com/v1.0/users/{user_email}/messages"
     headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
     
-    response = requests.get(url, headers=headers)
-    if response.status_code == 200:
-        return response.json().get("value", [])
-    else:
-        st.error(f"Error fetching emails: {response.status_code} - {response.text}")
-        return []
+    all_mails = []
+    while url:
+        response = requests.get(url, headers=headers)
+        if response.status_code == 200:
+            data = response.json()
+            all_mails.extend(data.get("value", []))
+            url = data.get("@odata.nextLink")  # Get next page URL if available
+        else:
+            st.error(f"Error fetching emails: {response.status_code} - {response.text}")
+            break
+
+    return all_mails
 
 def extract_topics(mails, max_topics=5, max_top_words=10):
     """Extract relevant topics using NMF."""
@@ -70,11 +76,39 @@ def extract_topics(mails, max_topics=5, max_top_words=10):
     ]
     return topics
 
+def filter_relevant_mails(mails, topics):
+    """Filter emails based on extracted NMF topics."""
+    h = html2text.HTML2Text()
+    h.ignore_links = True
+    
+    relevant_mails = []
+    for mail in mails:
+        details = (f"Subject: {mail.get('subject', 'No Subject')}\n"
+        f"From: {mail.get('from', {}).get('emailAddress', {}).get('address', 'Unknown Sender')}\n"
+        f"Received: {mail.get('receivedDateTime', 'Unknown Time')}\n"
+        f"Importance: {mail.get('importance', 'Normal')}\n"
+        f"Has Attachment: {mail.get('hasAttachments', False)}\n"
+        f"Categories: {', '.join(mail.get('categories', [])) if mail.get('categories') else 'None'}\n"
+        f"Conversation ID: {mail.get('conversationId', 'N/A')}\n"
+        f"Weblink: {mail.get('webLink', 'No Link')}\n"
+        f"Body: {h.handle(mail['body']['content']) if mail.get('body', {}).get('contentType') == 'html' else mail.get('body', {}).get('content', 'No Content')}")
+        
+        if any(topic in details for topic in topics):
+            relevant_mails.append(mail)
+    
+    return relevant_mails
+
 def query_responder(query, mails):
     """Use LLM to respond to user query based on filtered emails."""
     h = html2text.HTML2Text()  
-    h.ignore_links = True  # Limit to 30 emails to avoid long context
+    h.ignore_links = True  
 
+    topics = extract_topics(mails)
+    relevant_mails = filter_relevant_mails(mails, topics)
+    
+    if not relevant_mails:
+        return "No relevant emails found."
+    
     mail_details = "\n".join([
         f"Subject: {mail.get('subject', 'No Subject')}\n"
         f"From: {mail.get('from', {}).get('emailAddress', {}).get('address', 'Unknown Sender')}\n"
@@ -85,17 +119,7 @@ def query_responder(query, mails):
         f"Conversation ID: {mail.get('conversationId', 'N/A')}\n"
         f"Weblink: {mail.get('webLink', 'No Link')}\n"
         f"Body: {h.handle(mail['body']['content']) if mail.get('body', {}).get('contentType') == 'html' else mail.get('body', {}).get('content', 'No Content')}"
-        for mail in mails
-    ])
-    topics = extract_topics(mails)
-    relevant_mails = [mail for mail in mails if any(topic in mail_details for topic in topics)]
-    
-    if not relevant_mails:
-        return "No relevant emails found."
-    
-    mail_details = "\n".join([
-        f"Subject: {mail.get('subject', 'No Subject')}\nBody: {mail.get('body', {}).get('content', '')}"
-        for mail in relevant_mails
+        for mail in mails_s
     ])
     
     prompt = f"Answer the user's query using these emails:\n{mail_details}\n\nUser's Query: {query}"
