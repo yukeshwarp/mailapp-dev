@@ -5,6 +5,7 @@ import os
 from openai import AzureOpenAI
 import html2text
 from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.preprocessing import Normalizer
 from sklearn.decomposition import NMF
 
 # Azure app registration details
@@ -52,23 +53,35 @@ def fetch_emails(access_token, user_email):
 
     return all_mails
 
+
 def extract_topics(mails, max_topics=5, max_top_words=10):
-    """Extract relevant topics using NMF."""
+    """Extract relevant topics using NMF and TF-IDF."""
     h = html2text.HTML2Text()
     h.ignore_links = True
     
+    # Extract email text (subject + body)
     mail_texts = [
         f"Subject: {mail.get('subject', 'No Subject')}\nBody: {h.handle(mail.get('body', {}).get('content', ''))}"
-        for mail in mails
+        for mail in mails if mail.get("body", {}).get("content", "").strip()  # Ignore empty emails
     ]
     
+    if not mail_texts:
+        return []  # No meaningful data
+
+    # TF-IDF Vectorization
     vectorizer = TfidfVectorizer(stop_words="english", max_features=1000)
     tfidf = vectorizer.fit_transform(mail_texts)
-    
-    n_topics = min(max_topics, tfidf.shape[1])
-    nmf = NMF(n_components=n_topics, random_state=42, max_iter=500)
+
+    # Normalize the TF-IDF matrix for better NMF performance
+    normalizer = Normalizer(copy=False)
+    tfidf = normalizer.fit_transform(tfidf)
+
+    # NMF Model
+    n_topics = min(max_topics, tfidf.shape[1])  # Prevent overfitting if features are fewer
+    nmf = NMF(n_components=n_topics, random_state=42, max_iter=500, init="nndsvd")
     nmf.fit(tfidf)
-    
+
+    # Extract topic words
     feature_names = vectorizer.get_feature_names_out()
     topics = [
         ", ".join([feature_names[i] for i in topic.argsort()[-max_top_words:][::-1]])
@@ -77,11 +90,32 @@ def extract_topics(mails, max_topics=5, max_top_words=10):
     return topics
 
 def query_responder(query, mails):
-    """Use LLM to respond to user query based on filtered emails."""
-    h = html2text.HTML2Text()  
-    h.ignore_links = True  
-    
+    """Use LLM to respond to user query based on relevant emails."""
+    if not mails:
+        return "No emails available. Please fetch emails first."
+
+    h = html2text.HTML2Text()
+    h.ignore_links = True
+
+    # Extract topics
     topics = extract_topics(mails)
+    
+    # Prepare relevant email list
+    relevant_mails = []
+    for mail in mails:
+        subject = mail.get("subject", "No Subject")
+        body = mail.get("body", {}).get("content", "No Content")
+        body_text = h.handle(body) if mail.get("body", {}).get("contentType") == "html" else body
+
+        # Match if any topic appears in subject or body
+        if not topics or any(topic in subject or topic in body_text for topic in topics):
+            relevant_mails.append(mail)
+
+    # If no relevant emails are found, include the most recent 5 emails as fallback
+    if not relevant_mails:
+        relevant_mails = mails[:5]
+
+    # Prepare email content for LLM
     mail_details = "\n".join([
         f"Subject: {mail.get('subject', 'No Subject')}\n"
         f"From: {mail.get('from', {}).get('emailAddress', {}).get('address', 'Unknown Sender')}\n"
@@ -92,16 +126,18 @@ def query_responder(query, mails):
         f"Conversation ID: {mail.get('conversationId', 'N/A')}\n"
         f"Weblink: {mail.get('webLink', 'No Link')}\n"
         f"Body: {h.handle(mail['body']['content']) if mail.get('body', {}).get('contentType') == 'html' else mail.get('body', {}).get('content', 'No Content')}"
-        for mail in mails
+        for mail in relevant_mails
     ])
-    
-    prompt = f"Answer the user's query using these emails:\n{mail_details}\n\nUser's Query: {query}"
-    
+
+    # Generate LLM prompt
+    prompt = f"Answer the user's query using these emails:\n\n" + mail_details + f"\n\nUser's Query: {query}"
+
+    # Call LLM
     response = client.chat.completions.create(
         model="gpt-4o",
         messages=[
             {"role": "system", "content": "You are a helpful assistant."},
-            {"role": "user", "content": prompt}
+            {"role": "user", "content": prompt},
         ],
         temperature=0.5,
     )
