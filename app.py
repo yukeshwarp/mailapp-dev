@@ -217,7 +217,7 @@ if prompt := st.chat_input("Ask a question about your emails"):
             prompt_template = f"Answer the user's query using these emails:\n\n" + mail_details + f"\n\nUser's Query: {prompt}"
         
             # Call LLM
-            bot_response = client.chat.completions.create(
+            response_stream = client.chat.completions.create(
                 model="gpt-4o",
                 messages=[
                     {"role": "system", "content": "You are a helpful assistant."},
