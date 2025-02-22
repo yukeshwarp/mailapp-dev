@@ -175,7 +175,7 @@ if prompt := st.chat_input("Ask a question about your emails"):
     if mails:
         # response = query_responder(prompt, mails)
         if not mails:
-            return "No emails available. Please fetch emails first."
+            st.error("No emails available. Please fetch emails first.")
     
         h = html2text.HTML2Text()
         h.ignore_links = True
