@@ -121,7 +121,7 @@ def query_responder(query, mails, max_relevant_mails=25):
     # Get top N relevant emails
     top_indices = similarities.argsort()[-max_relevant_mails:][::-1]
     relevant_mails = [mails[i] for i in top_indices]
-    st.success(f"Identified {len(relevant_mails} mails")
+    st.success(f"Identified {len(relevant_mails)} mails")
     time.sleep(1000)
     # Prepare email metadata for LLM
     mail_details = "\n".join([
