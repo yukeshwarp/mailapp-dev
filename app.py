@@ -7,6 +7,8 @@ import html2text
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.preprocessing import Normalizer
 from sklearn.decomposition import NMF
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 
 # Azure app registration details
 CLIENT_ID = os.getenv("CLIENT_ID")
@@ -89,33 +91,37 @@ def extract_topics(mails, max_topics=5, max_top_words=10):
     ]
     return topics
 
-def query_responder(query, mails):
-    """Use LLM to respond to user query based on relevant emails."""
+def query_responder(query, mails, max_relevant_mails=25):
+    """Use LLM to respond to a user query based on the most relevant emails."""
     if not mails:
         return "No emails available. Please fetch emails first."
 
     h = html2text.HTML2Text()
     h.ignore_links = True
 
-    # Extract topics
-    topics = extract_topics(mails)
-    
-    # Prepare relevant email list
-    relevant_mails = []
-    for mail in mails:
-        subject = mail.get("subject", "No Subject")
-        body = mail.get("body", {}).get("content", "No Content")
-        body_text = h.handle(body) if mail.get("body", {}).get("contentType") == "html" else body
+    # Prepare email content for similarity analysis
+    mail_texts = [
+        f"Subject: {mail.get('subject', 'No Subject')}\nBody: {h.handle(mail.get('body', {}).get('content', ''))}"
+        for mail in mails if mail.get("body", {}).get("content", "").strip()
+    ]
 
-        # Match if any topic appears in subject or body
-        if not topics or any(topic in subject or topic in body_text for topic in topics):
-            relevant_mails.append(mail)
+    if not mail_texts:
+        return "No meaningful emails available."
 
-    # If no relevant emails are found, include the most recent 5 emails as fallback
-    if not relevant_mails:
-        relevant_mails = mails[:25]
+    # TF-IDF Vectorization (query + emails)
+    vectorizer = TfidfVectorizer(stop_words="english", max_features=1000)
+    tfidf_matrix = vectorizer.fit_transform([query] + mail_texts)
 
-    # Prepare email content for LLM
+    # Compute similarity scores between query and each email
+    query_vector = tfidf_matrix[0]  # First entry is the query
+    email_vectors = tfidf_matrix[1:]  # Remaining are emails
+    similarities = cosine_similarity(query_vector, email_vectors).flatten()
+
+    # Get top N relevant emails
+    top_indices = similarities.argsort()[-max_relevant_mails:][::-1]
+    relevant_mails = [mails[i] for i in top_indices]
+
+    # Prepare email metadata for LLM
     mail_details = "\n".join([
         f"Subject: {mail.get('subject', 'No Subject')}\n"
         f"From: {mail.get('from', {}).get('emailAddress', {}).get('address', 'Unknown Sender')}\n"
@@ -130,7 +136,7 @@ def query_responder(query, mails):
     ])
 
     # Generate LLM prompt
-    prompt = f"Answer the user's query using these emails:\n\n" + mail_details + f"\n\nUser's Query: {query}"
+    prompt = f"Answer the user's query using these emails:\n\n{mail_details}\n\nUser's Query: {query}"
 
     # Call LLM
     response = client.chat.completions.create(
@@ -142,6 +148,7 @@ def query_responder(query, mails):
         temperature=0.5,
     )
     return response.choices[0].message.content.strip()
+
 
 # Streamlit UI
 st.set_page_config(page_title="Outlook Mail Assistant", layout="wide")
