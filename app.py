@@ -57,7 +57,7 @@ def fetch_emails(access_token, user_email):
     return all_mails
 
 def rewrite_query(query):
-    promtp = f"Rewrite the query given to be suitable for using in NMF topic comparision (Absolute string matching) : {query}\n Example: \nInput: Fetch mails between 2024-12-01 to 2024-12-20.\n Output: Fetch mails between 01/12/2024 to 20/12/2024."
+    promtp = f"Rewrite the query given to be suitable for using in NMF topic comparision (Absolute string matching) : {query}\n Example: \nInput: Fetch mails between 1st december to 20th december 2024.\n Output: Fetch mails between 2024-12-01 to 2024-12-20."
 
     response = client.chat.completions.create(
         model="gpt-4o",
