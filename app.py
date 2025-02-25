@@ -56,6 +56,18 @@ def fetch_emails(access_token, user_email):
 
     return all_mails
 
+def rewrite_query(query):
+    promtp = f"Rewrite the query given to be suitable for using in NMF topic comparision (Absolute string matching) : {query}\n Example: \nInput: Fetch mails between 2024-12-01 to 2024-12-20.\n Output: Fetch mails between 01/12/2024 to 20/12/2024."
+
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {"role": "system", "content": "You are a helpful assistant in understanding and rewriting user query to match microsoft graph api mail response format."},
+            {"role": "user", "content": prompt},
+        ],
+        temperature=0.5,
+    )
+    return response.choices[0].message.content.strip()
 
 def extract_topics(mails, max_topics=5, max_top_words=10):
     """Extract relevant topics using NMF and TF-IDF."""
@@ -94,6 +106,10 @@ def extract_topics(mails, max_topics=5, max_top_words=10):
 
 def query_responder(query, mails, max_relevant_mails=25):
     """Use LLM to respond to a user query based on the most relevant emails."""
+    if query:
+        query = rewrite_query(query)
+    else:
+        return "Query can't be empty"
     if not mails:
         return "No emails available. Please fetch emails first."
 
