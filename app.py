@@ -46,7 +46,7 @@ def rewrite_query(query):
         model = "gpt-4o",
         messages =[
             {"role": "system", "content": "You are an useful assistant"},
-            {"role": "user", "content": promtp},
+            {"role": "user", "content": prompt},
         ],
         temperature = 0.6,
     )
