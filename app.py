@@ -12,7 +12,6 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import json  # Import JSON module for safe parsing
 import re
-from datetime import datetime
 
 # Azure app registration details
 CLIENT_ID = os.getenv("CLIENT_ID")
@@ -39,6 +38,19 @@ def get_access_token():
     else:
         st.error(f"Error acquiring token: {result.get('error_description')}")
         return None
+
+def rewrite_query(query):
+    prompt = f"Rewrite date/month/year/time period formats if present in the query to YYYY-MM-DD format and give the complete query. Query: {query}"
+
+    response = client.chat.completions.create(
+        model = "gpt-4o",
+        messages =[
+            {"role": "system", "content": "You are an useful assistant"},
+            {"role": "user", "content": promtp},
+        ],
+        temperature = 0.6,
+    )
+    return response.choices[0].message.content.strip()
 
 @st.cache_data(show_spinner=True)
 def fetch_emails(access_token, user_email):
@@ -96,15 +108,19 @@ def extract_topics(mails, max_topics=5, max_top_words=10):
     return topics
 
 
+from datetime import datetime
+import json
+import re
+
 def fetch_relevant_mails(mails, query):
-    """Uses LLM to filter relevant email IDs based on user query."""
+    """Use LLM to fetch relevant email IDs based on the query."""
     if not mails:
         return []
 
     h = html2text.HTML2Text()
     h.ignore_links = True
 
-    # Convert receivedDateTime to readable format
+    # Convert emails into structured format for LLM
     mail_details = [
         {
             "Email ID": mail.get("id", "Unknown"),
@@ -113,14 +129,14 @@ def fetch_relevant_mails(mails, query):
             "Subject": mail.get("subject", "No Subject"),
             "Body Preview": mail.get("bodyPreview", "No Preview"),
         }
-        for mail in mails
+        for mail in mails if "receivedDateTime" in mail  # Ensure valid timestamps
     ]
 
     # Generate LLM prompt
     prompt = f"""
-    Identify which emails are relevant based on the given query.
-
-    Query: {query}
+    Identify the most relevant email IDs based on the given query.
+    
+    Query: {rewrite_query(query)}
 
     Emails:
     {json.dumps(mail_details, indent=2)}
@@ -132,7 +148,7 @@ def fetch_relevant_mails(mails, query):
     response = client.chat.completions.create(
         model="gpt-4o",
         messages=[
-            {"role": "system", "content": "You are an email filtering assistant. Respond in JSON only."},
+            {"role": "system", "content": "You are an email sorting assistant. Respond in JSON only."},
             {"role": "user", "content": prompt},
         ],
         temperature=0.3,
@@ -144,9 +160,13 @@ def fetch_relevant_mails(mails, query):
         try:
             return json.loads(json_match.group(0))  # Safely parse JSON
         except json.JSONDecodeError:
+            st.error("Error: Extracted text is not valid JSON.")
             return []
 
+    st.error("Error: No JSON array found in LLM response.")
     return []
+
+
 
 
 # Streamlit UI
