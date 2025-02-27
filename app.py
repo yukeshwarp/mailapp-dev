@@ -134,7 +134,7 @@ def fetch_relevant_mails(mails, query):
 
     # Generate LLM prompt
     prompt = f"""
-    Identify the most relevant email IDs based on the given query.
+    Identify all possible mails and return their id that is relevent to answer the user's query.
     
     Query: {rewrite_query(query)}
 
