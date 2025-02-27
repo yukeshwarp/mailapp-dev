@@ -199,7 +199,7 @@ if prompt := st.chat_input("Ask a question about your emails"):
             f"Conversation ID: {mail.get('conversationId', 'N/A')}\n"
             f"Weblink: {mail.get('webLink', 'No Link')}\n"
             f"Body: {h.handle(mail['body']['content']) if mail.get('body', {}).get('contentType') == 'html' else mail.get('body', {}).get('content', 'No Content')}"
-            for mail in relevant_mails[:max_relevant_mails]
+            for mail in relevant_mails[:25]
         ])
     
         # Generate LLM prompt
