@@ -213,7 +213,7 @@ if prompt := st.chat_input("Ask a question about your emails"):
     
     mails = st.session_state.get("mails", [])
     if not mails:
-        return "No emails available. Please fetch emails first."
+        st.write("No emails available. Please fetch emails first.")
     
     relevant_convo_ids = fetch_relevant_convos(mails, query)
     
@@ -221,7 +221,7 @@ if prompt := st.chat_input("Ask a question about your emails"):
     relevant_mails = [mail for mail in mails if mail.get("conversationId") in relevant_convo_ids]
     
     if not relevant_mails:
-        return "No relevant emails found."
+        st.write("No relevant emails found.")
     
     h = html2text.HTML2Text()
     h.ignore_links = True
@@ -270,8 +270,5 @@ if prompt := st.chat_input("Ask a question about your emails"):
                 bot_response += chunk.choices[0].delta.content or ""
                 response_placeholder.markdown(bot_response)
 
-
-    else:
-        response = "No emails available. Fetch emails first."
     
     st.session_state["messages"].append({"role": "assistant", "content": bot_response})
