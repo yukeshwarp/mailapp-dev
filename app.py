@@ -113,7 +113,7 @@ def fetch_relevant_mails(mails, query):
 
     # Generate LLM prompt
     prompt = f"""
-    Identify the most relevant email IDs based on the user's query.
+    Identify the most relevant email IDs to respond to the user's query based on the Email's details that include date when it was received, from address, ID of the Email(Email ID) and body preview which give a small intro about the content.
 
     User Query: {query}
 
