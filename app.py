@@ -2,13 +2,11 @@ import streamlit as st
 import msal
 import requests
 import os
-from openai import AzureOpenAI
+from openai import OpenAI
 import html2text
-import time
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.preprocessing import Normalizer
 from sklearn.decomposition import NMF
-from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
 # Azure app registration details
@@ -18,12 +16,9 @@ TENANT_ID = os.getenv("TENANT_ID")
 AUTHORITY = f"https://login.microsoftonline.com/{TENANT_ID}"
 SCOPE = ["https://graph.microsoft.com/.default"]
 
-# LLM setup
-client = AzureOpenAI(
-    azure_endpoint=os.getenv("LLM_ENDPOINT"),
-    api_key=os.getenv("LLM_KEY"),
-    api_version="2024-10-01-preview",
-)
+# LLM setup (Ensure OpenAI is initialized properly)
+openai.api_key = os.getenv("LLM_KEY")
+openai.api_base = os.getenv("LLM_ENDPOINT")
 
 def get_access_token():  
     """Authenticate and get access token."""
@@ -121,8 +116,8 @@ def fetch_relevant_convos(mails, query):
     Return a structured JSON list of relevant conversation IDs. Return only the JSON of ID's with no additional text.
     """
     
-    response = client.chat.completions.create(
-        model="gpt-4o",
+    response = openai.ChatCompletion.create(
+        model="gpt-4",
         messages=[
             {"role": "system", "content": "You are a helpful assistant."},
             {"role": "user", "content": prompt},
@@ -130,58 +125,8 @@ def fetch_relevant_convos(mails, query):
         temperature=0.5,
     )
     
-    relevant_convos = response.choices[0].message.content.strip()
+    relevant_convos = response['choices'][0]['message']['content'].strip()
     return eval(relevant_convos)  # Convert JSON response to Python list
-
-def query_responder(query, mails, max_relevant_mails=25):
-    """Use LLM to respond to a user query based on the most relevant emails."""
-    if not mails:
-        return "No emails available. Please fetch emails first."
-    
-    relevant_convo_ids = fetch_relevant_convos(mails, query)
-    
-    # Filter emails belonging to relevant conversation IDs
-    relevant_mails = [mail for mail in mails if mail.get("conversationId") in relevant_convo_ids]
-    
-    if not relevant_mails:
-        return "No relevant emails found."
-    
-    h = html2text.HTML2Text()
-    h.ignore_links = True
-    
-    mail_details = "\n".join([
-        f"Subject: {mail.get('subject', 'No Subject')}\n"
-        f"From: {mail.get('from', {}).get('emailAddress', {}).get('address', 'Unknown Sender')}\n"
-        f"Received: {mail.get('receivedDateTime', 'Unknown Time')}\n"
-        f"Importance: {mail.get('importance', 'Normal')}\n"
-        f"Has Attachment: {mail.get('hasAttachments', False)}\n"
-        f"Categories: {', '.join(mail.get('categories', [])) if mail.get('categories') else 'None'}\n"
-        f"Conversation ID: {mail.get('conversationId', 'N/A')}\n"
-        f"Weblink: {mail.get('webLink', 'No Link')}\n"
-        f"Body: {h.handle(mail['body']['content']) if mail.get('body', {}).get('contentType') == 'html' else mail.get('body', {}).get('content', 'No Content')}"
-        for mail in relevant_mails[:max_relevant_mails]
-    ])
-    
-    # Generate LLM prompt
-    prompt = f"""
-    Answer the user's query using these relevant emails:
-    
-    {mail_details}
-    
-    User's Query: {query}
-    """
-    
-    # Call LLM
-    response = client.chat.completions.create(
-        model="gpt-4o",
-        messages=[
-            {"role": "system", "content": "You are a helpful assistant."},
-            {"role": "user", "content": prompt},
-        ],
-        temperature=0.5,
-    )
-    return response.choices[0].message.content.strip()
-
 
 # Streamlit UI
 st.set_page_config(page_title="Outlook Mail Assistant", layout="wide")
@@ -236,7 +181,7 @@ if prompt := st.chat_input("Ask a question about your emails"):
         f"Conversation ID: {mail.get('conversationId', 'N/A')}\n"
         f"Weblink: {mail.get('webLink', 'No Link')}\n"
         f"Body: {h.handle(mail['body']['content']) if mail.get('body', {}).get('contentType') == 'html' else mail.get('body', {}).get('content', 'No Content')}"
-        for mail in relevant_mails[:max_relevant_mails]
+        for mail in relevant_mails[:5]  # Limiting to 5 mails for this example
     ])
     
     # Generate LLM prompt
@@ -252,22 +197,17 @@ if prompt := st.chat_input("Ask a question about your emails"):
     with st.spinner("Thinking..."):
     
         # Call LLM
-        response_stream = client.chat.completions.create(
-            model="gpt-4o",
+        response = openai.ChatCompletion.create(
+            model="gpt-4",
             messages=[
                 {"role": "system", "content": "You are a helpful assistant."},
                 {"role": "user", "content": prompt_template},
             ],
             temperature=0.5,
-            stream = True,
         )
-    bot_response = ""
-    with st.chat_message("assistant"):
-        response_placeholder = st.empty()
-        for chunk in response_stream:
-            if chunk.choices:
-                bot_response += chunk.choices[0].delta.content or ""
-                response_placeholder.markdown(bot_response)
-
     
+    bot_response = response['choices'][0]['message']['content']
+    with st.chat_message("assistant"):
+        st.markdown(bot_response)
+
     st.session_state["messages"].append({"role": "assistant", "content": bot_response})
