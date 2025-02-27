@@ -191,7 +191,7 @@ def fetch_relevant_convos(mails, query):
     )
     
     relevant_convos = response.choices[0].message.content.strip()
-    return eval(relevant_convos[7:-3])  # Convert JSON response to Python list
+    return eval(relevant_convos[7:-4])  # Convert JSON response to Python list
 
 def query_responder(query, mails, max_relevant_mails=25):
     """Use LLM to respond to a user query based on the most relevant emails."""
