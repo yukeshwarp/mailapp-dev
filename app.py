@@ -12,6 +12,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import json  # Import JSON module for safe parsing
 import re
+from datetime import datetime
 
 # Azure app registration details
 CLIENT_ID = os.getenv("CLIENT_ID")
@@ -95,19 +96,15 @@ def extract_topics(mails, max_topics=5, max_top_words=10):
     return topics
 
 
-from datetime import datetime
-import json
-import re
-
 def fetch_relevant_mails(mails, query):
-    """Use LLM to fetch relevant email IDs based on the query."""
+    """Uses LLM to filter relevant email IDs based on user query."""
     if not mails:
         return []
 
     h = html2text.HTML2Text()
     h.ignore_links = True
 
-    # Convert emails into structured format for LLM
+    # Convert receivedDateTime to readable format
     mail_details = [
         {
             "Email ID": mail.get("id", "Unknown"),
@@ -116,13 +113,13 @@ def fetch_relevant_mails(mails, query):
             "Subject": mail.get("subject", "No Subject"),
             "Body Preview": mail.get("bodyPreview", "No Preview"),
         }
-        for mail in mails if "receivedDateTime" in mail  # Ensure valid timestamps
+        for mail in mails
     ]
 
     # Generate LLM prompt
     prompt = f"""
-    Identify the most relevant email IDs based on the given query.
-    
+    Identify which emails are relevant based on the given query.
+
     Query: {query}
 
     Emails:
@@ -135,7 +132,7 @@ def fetch_relevant_mails(mails, query):
     response = client.chat.completions.create(
         model="gpt-4o",
         messages=[
-            {"role": "system", "content": "You are an email sorting assistant. Respond in JSON only."},
+            {"role": "system", "content": "You are an email filtering assistant. Respond in JSON only."},
             {"role": "user", "content": prompt},
         ],
         temperature=0.3,
@@ -147,13 +144,9 @@ def fetch_relevant_mails(mails, query):
         try:
             return json.loads(json_match.group(0))  # Safely parse JSON
         except json.JSONDecodeError:
-            st.error("Error: Extracted text is not valid JSON.")
             return []
 
-    st.error("Error: No JSON array found in LLM response.")
     return []
-
-
 
 
 # Streamlit UI
