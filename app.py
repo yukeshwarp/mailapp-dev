@@ -282,7 +282,7 @@ if prompt := st.chat_input("Ask a question about your emails"):
         if not mails:
             st.write("No emails available. Please fetch emails first.")
         
-        relevant_convo_ids = fetch_relevant_convos(mails, query)
+        relevant_convo_ids = fetch_relevant_convos(mails, prompt)
         
         # Filter emails belonging to relevant conversation IDs
         relevant_mails = [mail for mail in mails if mail.get("conversationId") in relevant_convo_ids]
