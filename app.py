@@ -181,8 +181,6 @@ def fetch_relevant_convos(mails, query):
     Return a structured JSON list of relevant conversation IDs. Return only the JSON of ID's with no additional text.
     """
     
-    # Call LLM for structured response
-    client = OpenAI()
     response = client.chat.completions.create(
         model="gpt-4o",
         messages=[
