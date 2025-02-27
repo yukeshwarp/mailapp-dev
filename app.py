@@ -33,7 +33,24 @@ def get_access_token():
         CLIENT_ID, authority=AUTHORITY, client_credential=CLIENT_SECRET
     )
     result = app.acquire_token_for_client(scopes=SCOPE)
-    return result.get("access_token", None)
+    if "access_token" in result:
+        return result["access_token"]
+    else:
+        st.error(f"Error acquiring token: {result.get('error_description')}")
+        return None
+
+def rewrite_query(query):
+    prompt = f"Rewrite date/month/year/time period formats if present in the query to YYYY-MM-DD format and give the complete query. Query: {query}"
+
+    response = client.chat.completions.create(
+        model = "gpt-4o",
+        messages =[
+            {"role": "system", "content": "You are an useful assistant"},
+            {"role": "user", "content": prompt},
+        ],
+        temperature = 0.6,
+    )
+    return response.choices[0].message.content.strip()
 
 @st.cache_data(show_spinner=True)
 def fetch_emails(access_token, user_email):
@@ -54,42 +71,56 @@ def fetch_emails(access_token, user_email):
 
     return all_mails
 
-def extract_dates_from_query(query):
-    """Extracts date range from the query and returns start & end date as YYYY-MM-DD."""
-    today = datetime.utcnow()
-    match = re.search(r"(\d{4})\s*(January|February|March|April|May|June|July|August|September|October|November|December)", query, re.IGNORECASE)
-    
-    if match:
-        year = int(match.group(1))
-        month = match.group(2).capitalize()
-        month_number = datetime.strptime(month, "%B").month
-        start_date = datetime(year, month_number, 1).strftime("%Y-%m-%d")
-        end_date = (datetime(year, month_number + 1, 1) - timedelta(days=1)).strftime("%Y-%m-%d") if month_number < 12 else (datetime(year + 1, 1, 1) - timedelta(days=1)).strftime("%Y-%m-%d")
-        return start_date, end_date
-    
-    return None, None
 
-def filter_mails_by_date(mails, start_date, end_date):
-    """Filters emails that fall within the given start_date and end_date."""
-    if not start_date or not end_date:
-        return mails  # If no valid date found, return all emails
+def extract_topics(mails, max_topics=5, max_top_words=10):
+    """Extract relevant topics using NMF and TF-IDF."""
+    h = html2text.HTML2Text()
+    h.ignore_links = True
     
-    return [
-        mail for mail in mails
-        if "receivedDateTime" in mail and start_date <= mail["receivedDateTime"][:10] <= end_date
+    # Extract email text (subject + body)
+    mail_texts = [
+        f"Subject: {mail.get('subject', 'No Subject')}\nBody: {h.handle(mail.get('body', {}).get('content', ''))}"
+        for mail in mails if mail.get("body", {}).get("content", "").strip()  # Ignore empty emails
     ]
+    
+    if not mail_texts:
+        return []  # No meaningful data
+
+    # TF-IDF Vectorization
+    vectorizer = TfidfVectorizer(stop_words="english", max_features=1000)
+    tfidf = vectorizer.fit_transform(mail_texts)
+
+    # Normalize the TF-IDF matrix for better NMF performance
+    normalizer = Normalizer(copy=False)
+    tfidf = normalizer.fit_transform(tfidf)
+
+    # NMF Model
+    n_topics = min(max_topics, tfidf.shape[1])  # Prevent overfitting if features are fewer
+    nmf = NMF(n_components=n_topics, random_state=42, max_iter=500, init="nndsvd")
+    nmf.fit(tfidf)
+
+    # Extract topic words
+    feature_names = vectorizer.get_feature_names_out()
+    topics = [
+        ", ".join([feature_names[i] for i in topic.argsort()[-max_top_words:][::-1]])
+        for topic in nmf.components_
+    ]
+    return topics
+
+
+from datetime import datetime
+import json
+import re
 
 def fetch_relevant_mails(mails, query):
-    """Filter emails based on query and LLM."""
-    start_date, end_date = extract_dates_from_query(query)
-    filtered_mails = filter_mails_by_date(mails, start_date, end_date)
-
-    if not filtered_mails:
+    """Use LLM to fetch relevant email IDs based on the query."""
+    if not mails:
         return []
 
     h = html2text.HTML2Text()
     h.ignore_links = True
 
+    # Convert emails into structured format for LLM
     mail_details = [
         {
             "Email ID": mail.get("id", "Unknown"),
@@ -98,13 +129,14 @@ def fetch_relevant_mails(mails, query):
             "Subject": mail.get("subject", "No Subject"),
             "Body Preview": mail.get("bodyPreview", "No Preview"),
         }
-        for mail in filtered_mails
+        for mail in mails if "receivedDateTime" in mail  # Ensure valid timestamps
     ]
 
+    # Generate LLM prompt
     prompt = f"""
-    Identify relevant emails and return their ID. If no specific emails match, return all emails.
-
-    Query: {query}
+    Identify all possible mails and return their id that is relevent to answer the user's query. If none of them is relevant, return the id of all mails.
+    
+    Query: {rewrite_query(query)}
 
     Emails:
     {json.dumps(mail_details, indent=2)}
@@ -122,10 +154,11 @@ def fetch_relevant_mails(mails, query):
         temperature=0.3,
     )
 
+    # Extract JSON array using regex
     json_match = re.search(r"\[.*\]", response.choices[0].message.content.strip(), re.DOTALL)
     if json_match:
         try:
-            return json.loads(json_match.group(0))
+            return json.loads(json_match.group(0))  # Safely parse JSON
         except json.JSONDecodeError:
             st.error("Error: Extracted text is not valid JSON.")
             return []
@@ -133,13 +166,16 @@ def fetch_relevant_mails(mails, query):
     st.error("Error: No JSON array found in LLM response.")
     return []
 
+
+
+
 # Streamlit UI
 st.set_page_config(page_title="Outlook Mail Assistant", layout="wide")
 st.sidebar.title("Email Input")
 user_email = st.sidebar.text_input("Enter User Email")
 
 if st.sidebar.button("Fetch Emails"):
-    token = get_access_token()
+    token = get_access_token()  # Replace with your authentication function
     if token and user_email:
         mails = fetch_emails(token, user_email)
         st.session_state["mails"] = mails
@@ -160,34 +196,54 @@ if prompt := st.chat_input("Ask a question about your emails"):
     st.session_state["messages"].append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
-
+    
     mails = st.session_state.get("mails", [])
     if mails:
+        # response = query_responder(prompt, mails)
+        if not mails:
+            st.error("No emails available. Please fetch emails first.")
+        if not mails:
+            st.write("No emails available. Please fetch emails first.")
+        
         relevant_email_ids = fetch_relevant_mails(mails, prompt)
+
+        # Filter emails using 'id' instead of 'conversationId'
         relevant_mails = [mail for mail in mails if mail.get("id") in relevant_email_ids]
 
+        
         if not relevant_mails:
             st.write("No relevant emails found.")
-
+        
         h = html2text.HTML2Text()
         h.ignore_links = True
-
+        
         mail_details = "\n".join([
             f"Subject: {mail.get('subject', 'No Subject')}\n"
             f"From: {mail.get('from', {}).get('emailAddress', {}).get('address', 'Unknown Sender')}\n"
             f"Received: {mail.get('receivedDateTime', 'Unknown Time')}\n"
-            f"Body: {h.handle(mail.get('body', {}).get('content', 'No Content'))}"
+            f"Importance: {mail.get('importance', 'Normal')}\n"
+            f"Has Attachment: {mail.get('hasAttachments', False)}\n"
+            f"Categories: {', '.join(mail.get('categories', [])) if mail.get('categories') else 'None'}\n"
+            f"Conversation ID: {mail.get('conversationId', 'N/A')}\n"
+            f"Weblink: {mail.get('webLink', 'No Link')}\n"
+            f"Body: {h.handle(mail['body']['content']) if mail.get('body', {}).get('contentType') == 'html' else mail.get('body', {}).get('content', 'No Content')}"
             for mail in relevant_mails[:25]
         ])
-
+    
+        # Generate LLM prompt
         with st.spinner("Thinking..."):
+            prompt_template = f"Answer the user's query using the user emails, The user emails are given below:\n\n" + mail_details + f"\n\nUser's Query: {prompt}"
+        
+            # Call LLM
             response_stream = client.chat.completions.create(
                 model="gpt-4o",
-                messages=[{"role": "system", "content": "Answer the user's query based on the given emails."}, {"role": "user", "content": mail_details + f"\n\nUser's Query: {prompt}"}],
+                messages=[
+                    {"role": "system", "content": "You are a helpful assistant who responds to queries based on the given email details."},
+                    {"role": "user", "content": prompt_template},
+                ],
                 temperature=0.5,
-                stream=True,
+                stream = True,
             )
-        
         bot_response = ""
         with st.chat_message("assistant"):
             response_placeholder = st.empty()
@@ -196,4 +252,8 @@ if prompt := st.chat_input("Ask a question about your emails"):
                     bot_response += chunk.choices[0].delta.content or ""
                     response_placeholder.markdown(bot_response)
 
+
+    else:
+        response = "No emails available. Fetch emails first."
+    
     st.session_state["messages"].append({"role": "assistant", "content": bot_response})
