@@ -10,6 +10,7 @@ from sklearn.preprocessing import Normalizer
 from sklearn.decomposition import NMF
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+import json  # Import JSON module for safe parsing
 
 # Azure app registration details
 CLIENT_ID = os.getenv("CLIENT_ID")
@@ -92,6 +93,7 @@ def extract_topics(mails, max_topics=5, max_top_words=10):
     ]
     return topics
 
+
 def fetch_relevant_mails(mails, query):
     """Use LLM to fetch relevant email IDs based on the query."""
     if not mails:
@@ -117,9 +119,9 @@ def fetch_relevant_mails(mails, query):
     Emails:
     {mail_details}
     
-    Return a structured JSON list of relevant email IDs. Return only the JSON of IDs with no additional text.
+    Return a structured JSON list of relevant email IDs. Return only the JSON array.
     """
-    
+
     response = client.chat.completions.create(
         model="gpt-4o",
         messages=[
@@ -130,7 +132,13 @@ def fetch_relevant_mails(mails, query):
     )
     
     relevant_email_ids = response.choices[0].message.content.strip()
-    return eval(relevant_email_ids[7:-4])  # Convert JSON response to Python list
+
+    try:
+        return json.loads(relevant_email_ids)  # Parse JSON safely
+    except json.JSONDecodeError:
+        st.error("Error: LLM response is not valid JSON.")
+        return []
+
 
 # Streamlit UI
 st.set_page_config(page_title="Outlook Mail Assistant", layout="wide")
