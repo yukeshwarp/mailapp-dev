@@ -178,7 +178,7 @@ def fetch_relevant_convos(mails, query):
     Emails:
     {mail_details}
     
-    Return a structured JSON list of relevant conversation IDs.
+    Return a structured JSON list of relevant conversation IDs. Return only the JSON of ID's with no additional text.
     """
     
     # Call LLM for structured response
