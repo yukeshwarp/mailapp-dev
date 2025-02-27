@@ -208,7 +208,7 @@ def query_responder(query, mails, max_relevant_mails=25):
     
     h = html2text.HTML2Text()
     h.ignore_links = True
-    
+    max_relevant_mails = 25
     mail_details = "\n".join([
         f"Subject: {mail.get('subject', 'No Subject')}\n"
         f"From: {mail.get('from', {}).get('emailAddress', {}).get('address', 'Unknown Sender')}\n"
