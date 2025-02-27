@@ -95,57 +95,64 @@ def extract_topics(mails, max_topics=5, max_top_words=10):
     return topics
 
 
+from datetime import datetime
+import json
+import re
+
 def fetch_relevant_mails(mails, query):
     """Use LLM to fetch relevant email IDs based on the query."""
     if not mails:
         return []
 
-    # Extract relevant metadata
+    h = html2text.HTML2Text()
+    h.ignore_links = True
+
+    # Convert emails into structured format for LLM
     mail_details = [
         {
             "Email ID": mail.get("id", "Unknown"),
             "From": mail.get("from", {}).get("emailAddress", {}).get("address", "Unknown"),
-            "Received": mail.get("receivedDateTime", "Unknown"),
+            "Received": datetime.strptime(mail["receivedDateTime"], "%Y-%m-%dT%H:%M:%SZ").strftime("%d %B %Y, %H:%M UTC"),
+            "Subject": mail.get("subject", "No Subject"),
             "Body Preview": mail.get("bodyPreview", "No Preview"),
         }
-        for mail in mails
+        for mail in mails if "receivedDateTime" in mail  # Ensure valid timestamps
     ]
 
     # Generate LLM prompt
     prompt = f"""
-    Identify the most relevant email IDs to respond to the user's query based on the Email's details that include date when it was received, from address, ID of the Email(Email ID) and body preview which give a small intro about the content.
-
-    User Query: {query}
+    Identify the most relevant email IDs based on the given query.
+    
+    Query: {query}
 
     Emails:
-    {mail_details}
+    {json.dumps(mail_details, indent=2)}
 
-    Return ONLY a JSON array of email IDs. Example:
-    ["AAMkADk5YzNmMGUxLTk1ZWItNDdkNi04OGMyLWIyYjg4NWVhY2ZmYw", "AAMkBzIzNmMGUxLTk1ZWItNDdkNi04OGMyLWIyYjg4NWVhY2ZmYx"]
+    Return ONLY a JSON array of email IDs, like:
+    ["AAMk123...", "AAMk456..."]
     """
 
     response = client.chat.completions.create(
         model="gpt-4o",
         messages=[
-            {"role": "system", "content": "You are an intelligent email assistant. Respond with JSON only."},
+            {"role": "system", "content": "You are an email sorting assistant. Respond in JSON only."},
             {"role": "user", "content": prompt},
         ],
         temperature=0.3,
     )
 
-    relevant_email_ids = response.choices[0].message.content.strip()
-
-    # Extract JSON using regex
-    json_match = re.search(r"\[.*\]", relevant_email_ids, re.DOTALL)
+    # Extract JSON array using regex
+    json_match = re.search(r"\[.*\]", response.choices[0].message.content.strip(), re.DOTALL)
     if json_match:
         try:
-            return json.loads(json_match.group(0))  # Safely parse extracted JSON
+            return json.loads(json_match.group(0))  # Safely parse JSON
         except json.JSONDecodeError:
             st.error("Error: Extracted text is not valid JSON.")
             return []
 
     st.error("Error: No JSON array found in LLM response.")
     return []
+
 
 
 
@@ -182,7 +189,6 @@ if prompt := st.chat_input("Ask a question about your emails"):
         # response = query_responder(prompt, mails)
         if not mails:
             st.error("No emails available. Please fetch emails first.")
-        """Use LLM to respond to a user query based on the most relevant emails."""
         if not mails:
             st.write("No emails available. Please fetch emails first.")
         
