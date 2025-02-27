@@ -280,7 +280,7 @@ if prompt := st.chat_input("Ask a question about your emails"):
             st.error("No emails available. Please fetch emails first.")
         """Use LLM to respond to a user query based on the most relevant emails."""
         if not mails:
-            return "No emails available. Please fetch emails first."
+            st.write("No emails available. Please fetch emails first.")
         
         relevant_convo_ids = fetch_relevant_convos(mails, query)
         
@@ -288,7 +288,7 @@ if prompt := st.chat_input("Ask a question about your emails"):
         relevant_mails = [mail for mail in mails if mail.get("conversationId") in relevant_convo_ids]
         
         if not relevant_mails:
-            return "No relevant emails found."
+            st.write("No relevant emails found.")
         
         h = html2text.HTML2Text()
         h.ignore_links = True
