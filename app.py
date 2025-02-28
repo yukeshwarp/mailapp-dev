@@ -4,14 +4,12 @@ import requests
 import os
 from openai import AzureOpenAI
 import html2text
-import time
+import json
+import re
+from datetime import datetime, timedelta
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.preprocessing import Normalizer
 from sklearn.decomposition import NMF
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
-import json  # Import JSON module for safe parsing
-import re
 
 # Azure app registration details
 CLIENT_ID = os.getenv("CLIENT_ID")
